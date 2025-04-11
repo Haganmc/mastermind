@@ -11,7 +11,7 @@ class Mastermind
       black: "\u{26AB}",   # ⚫
       red: "\u{1F534}",    # 🔴
     }
-    @passkey = passkey || generate_passkey
+    @passkey = passkey
     @guess = []
     @feedback = []
     @history = [] # Store history of guesses and feedback
@@ -20,6 +20,124 @@ class Mastermind
   CORRECT_PLACE = "\u{1F534}" # 🔴 (Red for correct guesses in the correct place)
   CORRECT_COLOR = "\u{26AA}" # ⚪ (White for correct guesses in the wrong place)
   INCORRECT_GUESS = "\u{26AB}" # ⚫ (Black for incorrect guesses)
+
+  def play
+    puts "Welcome to Mastermind!"
+    puts "Would you like to be the creator of the secret code or the guesser?"
+    puts "Enter 'creator' to create the code or 'guesser' to guess the code:"
+    role = gets.chomp.downcase
+
+    if role == 'creator'
+      play_as_creator
+    elsif role == 'guesser'
+      play_as_guesser
+    else
+      puts "Invalid choice. Please enter 'creator' or 'guesser'."
+      play
+    end
+  end
+
+  def play_as_guesser
+    @passkey = generate_passkey
+    puts "You have 10 attempts to guess the passkey."
+    puts "The passkey consists of 4 colors chosen from: #{@COLOR_OPTIONS.keys.join(', ')}"
+    puts "Correct guesses in the correct place are represented by #{CORRECT_PLACE} (red)."
+    puts "Correct guesses in the wrong place are represented by #{CORRECT_COLOR} (white)."
+    puts "Incorrect guesses are represented by #{INCORRECT_GUESS} (black)."
+
+    10.times do |attempt|
+      puts "\nAttempt #{attempt + 1} of 10:"
+      get_guess
+      display_history # Show the history of guesses
+      if @feedback.count(CORRECT_PLACE) == 4
+        puts "Congratulations! You've guessed the passkey: #{@passkey.map { |color| @COLOR_OPTIONS[color] }.join(' ')}"
+        return
+      else
+        display_feedback
+        puts "Try again!"
+      end
+    end
+    puts "Game over! The passkey was: #{@passkey.map { |color| @COLOR_OPTIONS[color] }.join(' ')}"
+    replay_game
+  end
+
+  def play_as_creator
+    puts "Enter your secret code (4 colors separated by commas, options: red, black, orange, blue, green, yellow):"
+    loop do
+      @passkey = gets.chomp.split(",").map(&:strip).map(&:to_sym)
+      if valid_guess?(@passkey, @COLOR_OPTIONS.keys)
+        puts "Your secret code has been set!"
+        break
+      else
+        puts "Invalid input. Please enter 4 valid colors separated by commas (e.g., orange,blue,red,green):"
+      end
+    end
+
+    computer_guess
+  end
+
+  def computer_guess
+    possible_colors = @COLOR_OPTIONS.keys
+    possible_combinations = possible_colors.repeated_permutation(4).to_a # All possible combinations
+    puts "The computer will now try to guess your passkey."
+  
+    10.times do |attempt|
+      @guess = possible_combinations.sample # Pick a random guess from the remaining possibilities
+      puts "\nComputer's Attempt #{attempt + 1}: #{@guess.map { |color| @COLOR_OPTIONS[color] }.join(' ')}"
+      compare_guess
+      display_feedback
+  
+      if @feedback.count(CORRECT_PLACE) == 4
+        puts "The computer guessed your passkey: #{@guess.map { |color| @COLOR_OPTIONS[color] }.join(' ')}"
+        return
+      else
+        # Narrow down possible combinations based on feedback
+        possible_combinations.select! do |combination|
+          feedback = []
+          unmatched_passkey = @guess.dup
+          unmatched_combination = []
+  
+          # First pass: Check for correct guesses (right color and position)
+          combination.each_with_index do |color, index|
+            if color == unmatched_passkey[index]
+              feedback << CORRECT_PLACE
+              unmatched_passkey[index] = nil
+            else
+              unmatched_combination << color
+            end
+          end
+  
+          # Second pass: Check for correct guesses (right color, wrong position)
+          unmatched_combination.each do |color|
+            if unmatched_passkey.include?(color)
+              feedback << CORRECT_COLOR
+              unmatched_passkey[unmatched_passkey.index(color)] = nil
+            end
+          end
+  
+          # Fill remaining feedback slots with incorrect guesses
+          feedback += [INCORRECT_GUESS] * (4 - feedback.size)
+  
+          # Keep only combinations that would produce the same feedback
+          feedback.sort == @feedback.sort
+        end
+      end
+    end
+  
+    puts "The computer failed to guess your passkey: #{@passkey.map { |color| @COLOR_OPTIONS[color] }.join(' ')}"
+    replay_game
+  end
+
+  def replay_game
+    puts "Would you like to play again? (y/n)"
+    answer = gets.chomp.downcase
+    if answer == 'y'
+      game = Mastermind.new
+      game.play
+    else
+      puts "Thanks for playing!"
+    end
+  end
 
   def get_guess
     puts "Make your guess (enter 4 colors separated by commas, options: red, black, orange, blue, green, yellow):"
@@ -73,36 +191,6 @@ class Mastermind
     @history << { guess: @guess.dup, feedback: @feedback.dup }
   end
 
-  def play
-    puts "Welcome to Mastermind!"
-    puts "You have 10 attempts to guess the passkey."
-    puts "The passkey consists of 4 colors chosen from: #{@COLOR_OPTIONS.keys.join(', ')}"
-    puts "Correct guesses in the correct place are represented by #{CORRECT_PLACE} (red)."
-    puts "Correct guesses in the wrong place are represented by #{CORRECT_COLOR} (white)."
-    puts "Incorrect guesses are represented by #{INCORRECT_GUESS} (black)."
-
-    10.times do |attempt|
-      puts "\nAttempt #{attempt + 1} of 10:"
-      get_guess
-      display_history # Show the history of guesses
-      if @feedback.count(CORRECT_PLACE) == 4
-        puts "Congratulations! You've guessed the passkey: #{@passkey.map { |color| @COLOR_OPTIONS[color] }.join(' ')}"
-        return
-      else
-        display_feedback
-        puts "Try again!"
-      end
-    end
-
-    puts "Game over! The passkey was: #{@passkey.map { |color| @COLOR_OPTIONS[color] }.join(' ')}"
-  end
-
-  private
-
-  def generate_passkey
-    Array.new(4) { @COLOR_OPTIONS.keys.sample }
-  end
-
   def display_feedback
     # Ensure feedback is ordered: colored feedback first, then black
     ordered_feedback = @feedback.sort_by { |f| f == INCORRECT_GUESS ? 1 : 0 }
@@ -123,6 +211,12 @@ class Mastermind
       feedback_display = entry[:feedback].join(' ')
       puts "Attempt #{index + 1}: Guess: #{guess_display} | Feedback: #{feedback_display}"
     end
+  end
+
+  private
+
+  def generate_passkey
+    Array.new(4) { @COLOR_OPTIONS.keys.sample }
   end
 end
 
